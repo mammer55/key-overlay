@@ -387,21 +387,28 @@
       if (BTN_COLORS[ci].id === appearance.color) { col = BTN_COLORS[ci]; break; }
     }
     var radius = appearance.shape === 'circle' ? '50%' : '12px';
-    var bg, border, shadow;
+    var bg, border, shadow, blurCss;
     if (appearance.style === 'outline') {
-      bg     = 'transparent';
-      border = '2px solid ' + col.outline;
-      shadow = 'none';
+      bg      = 'transparent';
+      border  = '2px solid ' + col.outline;
+      shadow  = 'none';
+      blurCss = 'backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);';
+    } else if (appearance.style === 'clear') {
+      bg      = 'transparent';
+      border  = '2px solid ' + col.outline;
+      shadow  = 'none';
+      blurCss = '';
     } else {
-      bg     = 'radial-gradient(circle at 38% 35%,' + col.grad + ')';
-      border = '1.5px solid rgba(255,255,255,.55)';
-      shadow = '0 2px 14px rgba(0,0,0,.45)';
+      bg      = 'radial-gradient(circle at 38% 35%,' + col.grad + ')';
+      border  = '1.5px solid rgba(255,255,255,.55)';
+      shadow  = '0 2px 14px rgba(0,0,0,.45)';
+      blurCss = 'backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);';
     }
     btn.el.style.cssText = (
       'position:absolute;left:' + btn.x + 'px;top:' + btn.y + 'px;' +
       'width:' + btn.size + 'px;height:' + btn.size + 'px;border-radius:' + radius + ';' +
       'background:' + bg + ';' +
-      'backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);' +
+      blurCss +
       'border:' + border + ';' +
       'box-shadow:' + shadow + ';' +
       'display:flex;align-items:center;justify-content:center;' +
@@ -984,9 +991,97 @@
       menu.appendChild(b);
     });
 
+    // User-saved layouts
+    var userLayouts = loadLayouts();
+    if (userLayouts.length) {
+      var sep0 = document.createElement('div');
+      sep0.setAttribute('style','height:1px;background:rgba(255,255,255,.1);margin:4px 0');
+      menu.appendChild(sep0);
+      var myHdr = document.createElement('div');
+      myHdr.textContent = 'MY LAYOUTS';
+      myHdr.setAttribute('style',
+        'font-size:10px;font-weight:600;color:rgba(255,255,255,.35);letter-spacing:.08em;padding:4px 4px 2px');
+      menu.appendChild(myHdr);
+      userLayouts.forEach(function(layout) {
+        var b = document.createElement('button');
+        b.textContent = layout.name;
+        b.setAttribute('style',
+          'background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);' +
+          'border-radius:9px;padding:10px 14px;color:#fff;font-size:14px;font-weight:600;' +
+          'text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;' +
+          'font-family:-apple-system,sans-serif');
+        (function(l) {
+          function applyLayout() {
+            veil.remove();
+            widgets.slice().forEach(destroyWidget);
+            l.widgets.forEach(function(d) {
+              if (d.type === 'joystick') makeJoystick(d); else makeButton(d);
+            });
+            persist();
+          }
+          b.addEventListener('touchend', function(e){e.preventDefault();applyLayout();},{passive:false});
+          b.addEventListener('click', applyLayout);
+        })(layout);
+        menu.appendChild(b);
+      });
+    }
+
     var sep = document.createElement('div');
     sep.setAttribute('style','height:1px;background:rgba(255,255,255,.1);margin:4px 0');
     menu.appendChild(sep);
+
+    // Inline save-current row (hidden until tapped)
+    var saveSection = document.createElement('div');
+    saveSection.setAttribute('style','display:none;flex-direction:column;gap:5px');
+    var saveInp = document.createElement('input');
+    saveInp.placeholder = 'Layout name…';
+    saveInp.setAttribute('style',
+      'background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);' +
+      'border-radius:8px;padding:8px 10px;color:#fff;font-size:14px;outline:none;' +
+      '-webkit-appearance:none;-webkit-text-fill-color:#fff;box-sizing:border-box;width:100%');
+    var saveConfirmRow = document.createElement('div');
+    saveConfirmRow.setAttribute('style','display:flex;gap:6px');
+    function mkSaveInlineBtn(text, bg, fn) {
+      var b = document.createElement('button');
+      b.textContent = text;
+      b.setAttribute('style',
+        'flex:1;padding:8px 0;border-radius:8px;background:' + bg + ';border:none;' +
+        'color:#fff;font-size:13px;font-weight:600;cursor:pointer;' +
+        '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif');
+      b.addEventListener('touchend', function(e){e.preventDefault();fn();},{passive:false});
+      b.addEventListener('click', fn);
+      saveConfirmRow.appendChild(b);
+    }
+    mkSaveInlineBtn('Cancel', 'rgba(255,255,255,.12)', function() {
+      saveSection.style.display = 'none'; saveCurrentBtn.style.display = '';
+    });
+    mkSaveInlineBtn('Save', 'rgba(0,116,255,.9)', function() {
+      var nm = saveInp.value.trim() || ('Layout ' + (loadLayouts().length + 1));
+      var ls2 = loadLayouts();
+      ls2.push({ name:nm, widgets:currentLayoutData() });
+      persistLayouts(ls2);
+      veil.remove();
+    });
+    saveSection.appendChild(saveInp);
+    saveSection.appendChild(saveConfirmRow);
+    menu.appendChild(saveSection);
+
+    var saveCurrentBtn = document.createElement('button');
+    saveCurrentBtn.textContent = 'Save current…';
+    saveCurrentBtn.setAttribute('style',
+      'background:rgba(0,116,255,.18);border:1px solid rgba(80,140,255,.3);' +
+      'border-radius:9px;padding:10px 14px;color:rgba(110,170,255,.95);font-size:14px;' +
+      'font-weight:600;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;' +
+      'font-family:-apple-system,sans-serif');
+    function showSaveInline() {
+      saveCurrentBtn.style.display = 'none';
+      saveSection.style.display = 'flex';
+      saveInp.value = '';
+      saveInp.focus();
+    }
+    saveCurrentBtn.addEventListener('touchend', function(e){e.preventDefault();showSaveInline();},{passive:false});
+    saveCurrentBtn.addEventListener('click', showSaveInline);
+    menu.appendChild(saveCurrentBtn);
 
     var clearBtn = document.createElement('button');
     clearBtn.textContent = 'Clear all';
@@ -1270,9 +1365,11 @@
       });
     }
     [
-      { id:'gradient', label:'Gradient', desc:'Colored fill',
+      { id:'gradient', label:'Gradient', desc:'Color fill + blur',
         iconStyle:'background:radial-gradient(circle at 38% 35%,rgba(255,255,255,.6) 0%,rgba(140,120,210,.55) 55%,rgba(80,60,160,.7) 100%);border:1.5px solid rgba(255,255,255,.4)' },
-      { id:'outline',  label:'Outline',  desc:'Transparent + border',
+      { id:'outline',  label:'Frosted',  desc:'Blur + border',
+        iconStyle:'background:rgba(255,255,255,.12);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:2.5px solid rgba(170,150,255,.85)' },
+      { id:'clear',    label:'Clear',    desc:'Border only, no blur',
         iconStyle:'background:transparent;border:2.5px solid rgba(170,150,255,.85)' },
     ].forEach(function(s) {
       var btn = document.createElement('button');
