@@ -8,10 +8,11 @@
   var STORE    = 'keyOverlay_v2_' + location.hostname;
   var DEF_BTN  = 60;
   var DEF_JOY  = 110;
-  var MIN_BTN  = 36,  MAX_BTN = 150;
-  var MIN_JOY  = 70,  MAX_JOY = 220;
+  var MIN_BTN  = 36,  MAX_BTN = 300;
+  var MIN_JOY  = 70,  MAX_JOY = 400;
   var SNAP_D   = 15;
   var Z        = 2147483647;
+  var BAR_H    = 44;
   var JOY_DEAD = 0.18;
   var JOY_SLOW = 200;   // ms between keydown events at min stick deflection
   var JOY_FAST = 22;    // ms at max deflection
@@ -129,21 +130,39 @@
   ].join('');
   document.head.appendChild(styleEl);
 
+  // ── Viewport helpers ───────────────────────────────────────────────────────
+  function vViewW() { return window.visualViewport ? window.visualViewport.width  : window.innerWidth;  }
+  function vViewH() { return window.visualViewport ? window.visualViewport.height : window.innerHeight; }
+
   // ── Root ───────────────────────────────────────────────────────────────────
   var root = document.createElement('div');
   root.id = '__koRoot';
   root.setAttribute('style',
-    'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:' + Z);
+    'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:' + Z +
+    ';transform-origin:0 0');
   (document.body || document.documentElement).appendChild(root);
+
+  function syncViewport() {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    root.style.transform = 'translate(' + vv.offsetLeft + 'px,' + vv.offsetTop + 'px)';
+    root.style.width  = vv.width  + 'px';
+    root.style.height = vv.height + 'px';
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewport);
+    window.visualViewport.addEventListener('scroll', syncViewport);
+    syncViewport();
+  }
 
   // ── Control bar ────────────────────────────────────────────────────────────
   var bar = document.createElement('div');
   bar.setAttribute('style',
-    'position:fixed;top:0;left:0;right:0;height:44px;' +
+    'position:absolute;bottom:0;left:0;right:0;height:' + BAR_H + 'px;' +
     'background:rgba(0,0,0,.62);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
     'display:flex;align-items:center;padding:0 10px;gap:5px;' +
     'pointer-events:all;z-index:' + Z + ';box-sizing:border-box;' +
-    'border-bottom:1px solid rgba(255,255,255,.1)');
+    'border-top:1px solid rgba(255,255,255,.1)');
   bar.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive:false });
   root.appendChild(bar);
 
@@ -219,8 +238,8 @@
     var nx = dragState.bx + touch.clientX - dragState.tx;
     var ny = dragState.by + touch.clientY - dragState.ty;
     var s = snapAxis(w, nx, ny);
-    w.x = Math.round(Math.max(0, Math.min(window.innerWidth  - w.size, s.x)));
-    w.y = Math.round(Math.max(48, Math.min(window.innerHeight - w.size, s.y)));
+    w.x = Math.round(Math.max(0, Math.min(vViewW() - w.size, s.x)));
+    w.y = Math.round(Math.max(0, Math.min(vViewH() - BAR_H - w.size, s.y)));
     w.el.style.left = w.x + 'px';
     w.el.style.top  = w.y + 'px';
   }
@@ -310,8 +329,8 @@
 
   function applyBtnStyle(btn) {
     btn.el.style.cssText = (
-      'position:fixed;left:' + btn.x + 'px;top:' + btn.y + 'px;' +
-      'width:' + btn.size + 'px;height:' + btn.size + 'px;border-radius:50%;' +
+      'position:absolute;left:' + btn.x + 'px;top:' + btn.y + 'px;' +
+      'width:' + btn.size + 'px;height:' + btn.size + 'px;border-radius:12px;' +
       'background:radial-gradient(circle at 38% 35%,' +
         'rgba(255,255,255,.55) 0%,rgba(180,180,215,.4) 58%,rgba(90,90,140,.56) 100%);' +
       'backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);' +
@@ -337,11 +356,11 @@
       type:'button', id: data.id !== undefined ? data.id : (_uid++),
       key:data.key, code:data.code, label:data.label, size:sz,
       x: data.x !== undefined
-        ? Math.max(0,  Math.min(window.innerWidth  - sz, data.x))
-        : Math.round((window.innerWidth  - sz) / 2),
+        ? Math.max(0, Math.min(vViewW() - sz, data.x))
+        : Math.round((vViewW() - sz) / 2),
       y: data.y !== undefined
-        ? Math.max(48, Math.min(window.innerHeight - sz, data.y))
-        : Math.round((window.innerHeight - sz) / 2),
+        ? Math.max(0, Math.min(vViewH() - BAR_H - sz, data.y))
+        : Math.round((vViewH() - BAR_H - sz) / 2),
       el:null, labelEl:null, deleteEl:null, resizeEl:null,
     };
 
@@ -398,7 +417,7 @@
   // ── Joystick widget ────────────────────────────────────────────────────────
   function applyJoyStyle(joy) {
     joy.el.style.cssText = (
-      'position:fixed;left:' + joy.x + 'px;top:' + joy.y + 'px;' +
+      'position:absolute;left:' + joy.x + 'px;top:' + joy.y + 'px;' +
       'width:' + joy.size + 'px;height:' + joy.size + 'px;' +
       'border-radius:50%;overflow:visible;pointer-events:all;touch-action:none;' +
       'z-index:' + (Z - 1) + ';cursor:pointer'
@@ -428,11 +447,11 @@
       type:'joystick', id: data.id !== undefined ? data.id : (_uid++),
       size:sz,
       x: data.x !== undefined
-        ? Math.max(0,  Math.min(window.innerWidth  - sz, data.x))
-        : Math.round((window.innerWidth  - sz) / 2),
+        ? Math.max(0, Math.min(vViewW() - sz, data.x))
+        : Math.round((vViewW() - sz) / 2),
       y: data.y !== undefined
-        ? Math.max(48, Math.min(window.innerHeight - sz, data.y))
-        : Math.round((window.innerHeight - sz) / 2),
+        ? Math.max(0, Math.min(vViewH() - BAR_H - sz, data.y))
+        : Math.round((vViewH() - BAR_H - sz) / 2),
       el:null, innerEl:null, thumbEl:null, deleteEl:null, resizeEl:null,
       // runtime (not persisted)
       active:false, rafId:null,
@@ -825,7 +844,7 @@
 
   // ── Presets ────────────────────────────────────────────────────────────────
   function getPresets() {
-    var W = window.innerWidth, H = window.innerHeight;
+    var W = vViewW(), H = vViewH() - BAR_H;
     var s = DEF_BTN, g = 10;
     var lcx = Math.round(W * 0.17), lcy = Math.round(H * 0.73);
     var rcx = Math.round(W * 0.80), rcy = lcy;
@@ -859,7 +878,7 @@
   function openPresetsMenu() {
     var veil = document.createElement('div');
     veil.setAttribute('style',
-      'position:fixed;top:44px;left:0;right:0;bottom:0;' +
+      'position:absolute;top:0;left:0;right:0;bottom:0;' +
       'z-index:' + (Z + 1) + ';pointer-events:all');
     veil.addEventListener('touchend', function(e){
       if (e.target === veil){ e.preventDefault(); veil.remove(); }
@@ -867,7 +886,7 @@
 
     var menu = document.createElement('div');
     menu.setAttribute('style',
-      'position:absolute;top:6px;right:10px;' +
+      'position:absolute;bottom:' + (BAR_H + 6) + 'px;right:10px;' +
       'background:rgba(20,20,30,.97);border:1px solid rgba(255,255,255,.16);' +
       'border-radius:14px;padding:7px;min-width:190px;' +
       'display:flex;flex-direction:column;gap:4px;' +
