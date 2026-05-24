@@ -5,7 +5,9 @@
   window.__keyOverlayActive = true;
 
   // ── Constants ──────────────────────────────────────────────────────────────
-  var STORE    = 'keyOverlay_v2_' + location.hostname;
+  var STORE        = 'keyOverlay_v2_' + location.hostname;
+  var APP_STORE    = 'keyOverlayAppearance_v1';
+  var LAYOUT_STORE = 'keyOverlayLayouts_v1';
   var DEF_BTN  = 60;
   var DEF_JOY  = 110;
   var MIN_BTN  = 36,  MAX_BTN = 300;
@@ -13,6 +15,29 @@
   var SNAP_D   = 15;
   var Z        = 2147483647;
   var BAR_H    = 44;
+
+  var BTN_COLORS = [
+    { id:'default', name:'Purple', swatch:'rgba(120,100,200,.9)',
+      grad:'rgba(255,255,255,.55) 0%,rgba(180,180,215,.4) 58%,rgba(90,90,140,.56) 100%',
+      outline:'rgba(170,150,255,.9)' },
+    { id:'red',     name:'Red',    swatch:'rgba(200,55,55,.9)',
+      grad:'rgba(255,200,200,.6) 0%,rgba(220,100,100,.45) 58%,rgba(160,35,35,.65) 100%',
+      outline:'rgba(255,110,110,.9)' },
+    { id:'blue',    name:'Blue',   swatch:'rgba(50,110,230,.9)',
+      grad:'rgba(160,210,255,.6) 0%,rgba(80,150,255,.45) 58%,rgba(20,75,210,.65) 100%',
+      outline:'rgba(90,160,255,.9)' },
+    { id:'green',   name:'Green',  swatch:'rgba(40,160,80,.9)',
+      grad:'rgba(160,255,185,.6) 0%,rgba(80,210,120,.45) 58%,rgba(20,140,55,.65) 100%',
+      outline:'rgba(90,220,130,.9)' },
+    { id:'gold',    name:'Gold',   swatch:'rgba(200,155,10,.9)',
+      grad:'rgba(255,240,155,.65) 0%,rgba(255,195,55,.5) 58%,rgba(175,125,0,.65) 100%',
+      outline:'rgba(255,205,55,.9)' },
+    { id:'white',   name:'White',  swatch:'rgba(210,210,225,.85)',
+      grad:'rgba(255,255,255,.75) 0%,rgba(225,225,235,.55) 58%,rgba(165,165,180,.5) 100%',
+      outline:'rgba(240,240,255,.9)' },
+  ];
+
+  var appearance = { shape:'square', style:'gradient', color:'default' };
   var JOY_DEAD = 0.18;
   var JOY_SLOW = 200;   // ms between keydown events at min stick deflection
   var JOY_FAST = 22;    // ms at max deflection
@@ -119,6 +144,33 @@
     catch (e) { return []; }
   }
 
+  function loadAppearance() {
+    try {
+      var a = JSON.parse(localStorage.getItem(APP_STORE) || '{}');
+      if (a.shape === 'circle' || a.shape === 'square') appearance.shape = a.shape;
+      if (a.style === 'gradient' || a.style === 'outline') appearance.style = a.style;
+      var ids = BTN_COLORS.map(function(c){ return c.id; });
+      if (a.color && ids.indexOf(a.color) >= 0) appearance.color = a.color;
+    } catch(e) {}
+  }
+  function persistAppearance() {
+    try { localStorage.setItem(APP_STORE, JSON.stringify(appearance)); } catch(e) {}
+  }
+  loadAppearance();
+
+  function loadLayouts() {
+    try { return JSON.parse(localStorage.getItem(LAYOUT_STORE) || '[]'); } catch(e) { return []; }
+  }
+  function persistLayouts(ls) {
+    try { localStorage.setItem(LAYOUT_STORE, JSON.stringify(ls)); } catch(e) {}
+  }
+  function currentLayoutData() {
+    return widgets.map(function(w) {
+      if (w.type === 'joystick') return { type:'joystick', id:w.id, x:w.x, y:w.y, size:w.size };
+      return { type:'button', id:w.id, key:w.key, code:w.code, label:w.label, x:w.x, y:w.y, size:w.size };
+    });
+  }
+
   // ── Injected CSS ───────────────────────────────────────────────────────────
   var styleEl = document.createElement('style');
   styleEl.textContent = [
@@ -194,6 +246,8 @@
   bar.appendChild(barBtn('+', openAddModal));
   bar.appendChild(barBtn('🕹', addJoystick, 'font-size:15px;padding:4px 7px;'));
   bar.appendChild(barBtn('⋯', openPresetsMenu, 'font-size:16px;padding:4px 8px;'));
+  bar.appendChild(barBtn('📁', openLayoutsModal, 'font-size:14px;padding:4px 7px;'));
+  bar.appendChild(barBtn('🎨', openAppearanceModal, 'font-size:14px;padding:4px 7px;'));
 
   // ── Snap helper ────────────────────────────────────────────────────────────
   function snapAxis(w, nx, ny) {
@@ -328,14 +382,28 @@
   }
 
   function applyBtnStyle(btn) {
+    var col = BTN_COLORS[0];
+    for (var ci = 0; ci < BTN_COLORS.length; ci++) {
+      if (BTN_COLORS[ci].id === appearance.color) { col = BTN_COLORS[ci]; break; }
+    }
+    var radius = appearance.shape === 'circle' ? '50%' : '12px';
+    var bg, border, shadow;
+    if (appearance.style === 'outline') {
+      bg     = 'transparent';
+      border = '2px solid ' + col.outline;
+      shadow = 'none';
+    } else {
+      bg     = 'radial-gradient(circle at 38% 35%,' + col.grad + ')';
+      border = '1.5px solid rgba(255,255,255,.55)';
+      shadow = '0 2px 14px rgba(0,0,0,.45)';
+    }
     btn.el.style.cssText = (
       'position:absolute;left:' + btn.x + 'px;top:' + btn.y + 'px;' +
-      'width:' + btn.size + 'px;height:' + btn.size + 'px;border-radius:12px;' +
-      'background:radial-gradient(circle at 38% 35%,' +
-        'rgba(255,255,255,.55) 0%,rgba(180,180,215,.4) 58%,rgba(90,90,140,.56) 100%);' +
+      'width:' + btn.size + 'px;height:' + btn.size + 'px;border-radius:' + radius + ';' +
+      'background:' + bg + ';' +
       'backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);' +
-      'border:1.5px solid rgba(255,255,255,.55);' +
-      'box-shadow:0 2px 14px rgba(0,0,0,.45);' +
+      'border:' + border + ';' +
+      'box-shadow:' + shadow + ';' +
       'display:flex;align-items:center;justify-content:center;' +
       'font-family:-apple-system,sans-serif;font-weight:700;' +
       'color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);' +
@@ -344,9 +412,9 @@
       'z-index:' + (Z - 1) + ';overflow:visible;' +
       'transition:transform .08s ease,opacity .08s ease'
     );
-    btn.labelEl.style.fontSize    = btnFontSize(btn.label, btn.size);
-    btn.labelEl.style.pointerEvents = 'none';
-    btn.labelEl.style.userSelect  = 'none';
+    btn.labelEl.style.fontSize       = btnFontSize(btn.label, btn.size);
+    btn.labelEl.style.pointerEvents  = 'none';
+    btn.labelEl.style.userSelect     = 'none';
     btn.labelEl.style.webkitUserSelect = 'none';
   }
 
@@ -937,6 +1005,347 @@
 
     veil.appendChild(menu);
     root.appendChild(veil);
+  }
+
+  // ── Layout manager modal ───────────────────────────────────────────────────
+  function openLayoutsModal() {
+    var ov = document.createElement('div');
+    ov.setAttribute('style',
+      'position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.65);' +
+      'backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);' +
+      'display:flex;align-items:flex-end;justify-content:center;' +
+      'z-index:' + (Z + 1) + ';pointer-events:all');
+    ov.addEventListener('touchmove', function(e){e.preventDefault();},{passive:false});
+    ov.addEventListener('touchend', function(e){
+      if (e.target === ov){e.preventDefault();ov.remove();}
+    },{passive:false});
+
+    var modal = document.createElement('div');
+    modal.setAttribute('style',
+      'background:rgba(20,20,30,.97);border:1px solid rgba(255,255,255,.14);' +
+      'border-radius:22px 22px 0 0;padding:18px 14px 36px;' +
+      'width:100%;max-width:500px;box-sizing:border-box;' +
+      'display:flex;flex-direction:column;gap:12px;' +
+      'font-family:-apple-system,sans-serif;color:#fff;' +
+      'box-shadow:0 -8px 40px rgba(0,0,0,.7);max-height:80vh');
+    ov.appendChild(modal);
+
+    var hdl = document.createElement('div');
+    hdl.setAttribute('style','width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.25);margin:0 auto 4px');
+    modal.appendChild(hdl);
+
+    var ttl = document.createElement('div');
+    ttl.textContent = 'Layouts';
+    ttl.setAttribute('style','font-size:17px;font-weight:700;text-align:center');
+    modal.appendChild(ttl);
+
+    var listWrap = document.createElement('div');
+    listWrap.setAttribute('style',
+      'overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;' +
+      'display:flex;flex-direction:column;gap:6px;min-height:0;max-height:300px');
+    modal.appendChild(listWrap);
+
+    function renderList() {
+      listWrap.innerHTML = '';
+      var layouts = loadLayouts();
+      if (!layouts.length) {
+        var empty = document.createElement('div');
+        empty.textContent = 'No saved layouts yet';
+        empty.setAttribute('style','text-align:center;color:rgba(255,255,255,.35);padding:24px 0;font-size:14px');
+        listWrap.appendChild(empty);
+        return;
+      }
+      layouts.forEach(function(layout, idx) {
+        var row = document.createElement('div');
+        row.setAttribute('style',
+          'display:flex;align-items:center;gap:8px;flex-shrink:0;' +
+          'background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);' +
+          'border-radius:11px;padding:10px 12px');
+
+        var nm = document.createElement('div');
+        nm.textContent = layout.name;
+        nm.setAttribute('style',
+          'flex:1;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+        row.appendChild(nm);
+
+        var ct = document.createElement('div');
+        ct.textContent = layout.widgets.length + (layout.widgets.length === 1 ? ' item' : ' items');
+        ct.setAttribute('style','font-size:12px;color:rgba(255,255,255,.38);white-space:nowrap');
+        row.appendChild(ct);
+
+        var loadBtn = document.createElement('button');
+        loadBtn.textContent = 'Load';
+        loadBtn.setAttribute('style',
+          'background:rgba(0,116,255,.75);border:none;border-radius:8px;' +
+          'padding:7px 13px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;' +
+          '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif;white-space:nowrap');
+        (function(l) {
+          function doLoad() {
+            ov.remove();
+            widgets.slice().forEach(destroyWidget);
+            l.widgets.forEach(function(d) {
+              if (d.type === 'joystick') makeJoystick(d); else makeButton(d);
+            });
+            persist();
+          }
+          loadBtn.addEventListener('touchend', function(e){e.preventDefault();doLoad();},{passive:false});
+          loadBtn.addEventListener('click', doLoad);
+        })(layout);
+        row.appendChild(loadBtn);
+
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.setAttribute('style',
+          'background:rgba(200,40,40,.22);border:1px solid rgba(255,80,80,.28);border-radius:8px;' +
+          'padding:7px 9px;color:rgba(255,110,110,.9);font-size:13px;font-weight:700;cursor:pointer;' +
+          '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif');
+        (function(i) {
+          function doDel() {
+            var ls2 = loadLayouts(); ls2.splice(i, 1); persistLayouts(ls2); renderList();
+          }
+          delBtn.addEventListener('touchend', function(e){e.preventDefault();doDel();},{passive:false});
+          delBtn.addEventListener('click', doDel);
+        })(idx);
+        row.appendChild(delBtn);
+
+        listWrap.appendChild(row);
+      });
+    }
+    renderList();
+
+    // Save-name input (hidden until "Save Current" tapped)
+    var saveWrap = document.createElement('div');
+    saveWrap.setAttribute('style','display:none;flex-direction:column;gap:8px');
+    var nameInp = document.createElement('input');
+    nameInp.placeholder = 'Layout name…';
+    nameInp.setAttribute('style',
+      'background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);' +
+      'border-radius:10px;padding:10px 12px;color:#fff;font-size:15px;outline:none;' +
+      '-webkit-appearance:none;-webkit-text-fill-color:#fff;box-sizing:border-box;width:100%');
+    saveWrap.appendChild(nameInp);
+    var saveRow = document.createElement('div');
+    saveRow.setAttribute('style','display:flex;gap:8px');
+    function mkSaveBtn(text, bg, fn) {
+      var b = document.createElement('button');
+      b.textContent = text;
+      b.setAttribute('style',
+        'flex:1;padding:11px 0;border-radius:11px;background:' + bg + ';border:none;' +
+        'color:#fff;font-size:15px;font-weight:600;cursor:pointer;' +
+        '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif');
+      b.addEventListener('touchend', function(e){e.preventDefault();fn();},{passive:false});
+      b.addEventListener('click', fn);
+      saveRow.appendChild(b);
+    }
+    mkSaveBtn('Cancel', 'rgba(255,255,255,.12)', function() {
+      saveWrap.style.display = 'none'; bottomRow.style.display = 'flex';
+    });
+    mkSaveBtn('Save', 'rgba(0,116,255,.92)', function() {
+      var nm2 = nameInp.value.trim() || ('Layout ' + (loadLayouts().length + 1));
+      var ls2 = loadLayouts();
+      ls2.push({ name:nm2, widgets:currentLayoutData() });
+      persistLayouts(ls2);
+      saveWrap.style.display = 'none'; bottomRow.style.display = 'flex';
+      nameInp.value = ''; renderList();
+    });
+    saveWrap.appendChild(saveRow);
+    modal.appendChild(saveWrap);
+
+    var bottomRow = document.createElement('div');
+    bottomRow.setAttribute('style','display:flex;gap:8px');
+    function mkActionBtn(text, bg, fn) {
+      var b = document.createElement('button');
+      b.textContent = text;
+      b.setAttribute('style',
+        'flex:1;padding:12px 0;border-radius:12px;background:' + bg + ';border:none;' +
+        'color:#fff;font-size:15px;font-weight:600;cursor:pointer;' +
+        '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif');
+      b.addEventListener('touchend', function(e){e.preventDefault();fn();},{passive:false});
+      b.addEventListener('click', fn);
+      bottomRow.appendChild(b);
+    }
+    mkActionBtn('New Layout', 'rgba(255,255,255,.12)', function() {
+      ov.remove(); widgets.slice().forEach(destroyWidget);
+    });
+    mkActionBtn('Save Current', 'rgba(0,116,255,.92)', function() {
+      bottomRow.style.display = 'none';
+      saveWrap.style.display = 'flex';
+      nameInp.focus();
+    });
+    modal.appendChild(bottomRow);
+
+    root.appendChild(ov);
+  }
+
+  // ── Appearance modal ───────────────────────────────────────────────────────
+  function openAppearanceModal() {
+    var ov = document.createElement('div');
+    ov.setAttribute('style',
+      'position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.65);' +
+      'backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);' +
+      'display:flex;align-items:flex-end;justify-content:center;' +
+      'z-index:' + (Z + 1) + ';pointer-events:all');
+    ov.addEventListener('touchmove', function(e){e.preventDefault();},{passive:false});
+    ov.addEventListener('touchend', function(e){
+      if (e.target === ov){e.preventDefault();ov.remove();}
+    },{passive:false});
+
+    var modal = document.createElement('div');
+    modal.setAttribute('style',
+      'background:rgba(20,20,30,.97);border:1px solid rgba(255,255,255,.14);' +
+      'border-radius:22px 22px 0 0;padding:18px 14px 36px;' +
+      'width:100%;max-width:500px;box-sizing:border-box;' +
+      'display:flex;flex-direction:column;gap:16px;' +
+      'font-family:-apple-system,sans-serif;color:#fff;' +
+      'box-shadow:0 -8px 40px rgba(0,0,0,.7)');
+    ov.appendChild(modal);
+
+    var hdl = document.createElement('div');
+    hdl.setAttribute('style','width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.25);margin:0 auto 4px');
+    modal.appendChild(hdl);
+
+    var ttl = document.createElement('div');
+    ttl.textContent = 'Button Style';
+    ttl.setAttribute('style','font-size:17px;font-weight:700;text-align:center');
+    modal.appendChild(ttl);
+
+    function secLabel(text) {
+      var el = document.createElement('div');
+      el.textContent = text;
+      el.setAttribute('style',
+        'font-size:11px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.08em;margin-bottom:-8px');
+      return el;
+    }
+
+    // Shape
+    modal.appendChild(secLabel('SHAPE'));
+    var shapeRow = document.createElement('div');
+    shapeRow.setAttribute('style','display:flex;gap:8px');
+    var shapeEls = {};
+    function refreshShape() {
+      Object.keys(shapeEls).forEach(function(k) {
+        var on = k === appearance.shape;
+        shapeEls[k].style.background  = on ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.07)';
+        shapeEls[k].style.borderColor = on ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.15)';
+      });
+    }
+    ['square','circle'].forEach(function(shape) {
+      var btn = document.createElement('button');
+      btn.setAttribute('style',
+        'flex:1;padding:12px;border-radius:12px;border:1.5px solid rgba(255,255,255,.15);' +
+        'background:rgba(255,255,255,.07);color:#fff;font-size:14px;font-weight:600;cursor:pointer;' +
+        '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif;' +
+        'display:flex;flex-direction:column;align-items:center;gap:7px');
+      var icon = document.createElement('div');
+      icon.setAttribute('style',
+        'width:30px;height:30px;' +
+        (shape === 'circle' ? 'border-radius:50%;' : 'border-radius:7px;') +
+        'background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.45)');
+      var lbl = document.createElement('span');
+      lbl.textContent = shape === 'circle' ? 'Circle' : 'Square';
+      btn.appendChild(icon); btn.appendChild(lbl);
+      shapeEls[shape] = btn;
+      (function(s) {
+        function pick() {
+          appearance.shape = s; persistAppearance(); refreshShape();
+          widgets.forEach(function(w){ if (w.type==='button') applyBtnStyle(w); });
+        }
+        btn.addEventListener('touchend', function(e){e.preventDefault();pick();},{passive:false});
+        btn.addEventListener('click', pick);
+      })(shape);
+      shapeRow.appendChild(btn);
+    });
+    refreshShape();
+    modal.appendChild(shapeRow);
+
+    // Fill style
+    modal.appendChild(secLabel('FILL STYLE'));
+    var fillRow = document.createElement('div');
+    fillRow.setAttribute('style','display:flex;gap:8px');
+    var fillEls = {};
+    function refreshFill() {
+      Object.keys(fillEls).forEach(function(k) {
+        var on = k === appearance.style;
+        fillEls[k].style.background  = on ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.07)';
+        fillEls[k].style.borderColor = on ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.15)';
+      });
+    }
+    [
+      { id:'gradient', label:'Gradient', desc:'Colored fill',
+        iconStyle:'background:radial-gradient(circle at 38% 35%,rgba(255,255,255,.6) 0%,rgba(140,120,210,.55) 55%,rgba(80,60,160,.7) 100%);border:1.5px solid rgba(255,255,255,.4)' },
+      { id:'outline',  label:'Outline',  desc:'Transparent + border',
+        iconStyle:'background:transparent;border:2.5px solid rgba(170,150,255,.85)' },
+    ].forEach(function(s) {
+      var btn = document.createElement('button');
+      btn.setAttribute('style',
+        'flex:1;padding:12px;border-radius:12px;border:1.5px solid rgba(255,255,255,.15);' +
+        'background:rgba(255,255,255,.07);color:#fff;font-size:14px;font-weight:600;cursor:pointer;' +
+        '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif;' +
+        'display:flex;flex-direction:column;align-items:center;gap:5px');
+      var icon = document.createElement('div');
+      icon.setAttribute('style','width:30px;height:30px;border-radius:7px;' + s.iconStyle);
+      var lbl = document.createElement('span'); lbl.textContent = s.label;
+      var desc = document.createElement('span');
+      desc.textContent = s.desc;
+      desc.setAttribute('style','font-size:10px;color:rgba(255,255,255,.4);font-weight:400;text-align:center');
+      btn.appendChild(icon); btn.appendChild(lbl); btn.appendChild(desc);
+      fillEls[s.id] = btn;
+      (function(id) {
+        function pick() {
+          appearance.style = id; persistAppearance(); refreshFill();
+          widgets.forEach(function(w){ if (w.type==='button') applyBtnStyle(w); });
+        }
+        btn.addEventListener('touchend', function(e){e.preventDefault();pick();},{passive:false});
+        btn.addEventListener('click', pick);
+      })(s.id);
+      fillRow.appendChild(btn);
+    });
+    refreshFill();
+    modal.appendChild(fillRow);
+
+    // Color
+    modal.appendChild(secLabel('COLOR'));
+    var colorRow = document.createElement('div');
+    colorRow.setAttribute('style','display:flex;gap:10px;flex-wrap:wrap;padding:4px 0');
+    var colorEls = {};
+    function refreshColor() {
+      Object.keys(colorEls).forEach(function(k) {
+        var on = k === appearance.color;
+        colorEls[k].style.transform  = on ? 'scale(1.2)'  : 'scale(1)';
+        colorEls[k].style.boxShadow  = on ? '0 0 0 3px rgba(255,255,255,.8)' : 'none';
+      });
+    }
+    BTN_COLORS.forEach(function(col) {
+      var btn = document.createElement('button');
+      btn.setAttribute('style',
+        'width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.25);' +
+        'background:' + col.swatch + ';cursor:pointer;flex-shrink:0;' +
+        '-webkit-tap-highlight-color:transparent;' +
+        'transition:transform .12s ease,box-shadow .12s ease');
+      colorEls[col.id] = btn;
+      (function(id) {
+        function pick() {
+          appearance.color = id; persistAppearance(); refreshColor();
+          widgets.forEach(function(w){ if (w.type==='button') applyBtnStyle(w); });
+        }
+        btn.addEventListener('touchend', function(e){e.preventDefault();pick();},{passive:false});
+        btn.addEventListener('click', pick);
+      })(col.id);
+      colorRow.appendChild(btn);
+    });
+    refreshColor();
+    modal.appendChild(colorRow);
+
+    var doneBtn = document.createElement('button');
+    doneBtn.textContent = 'Done';
+    doneBtn.setAttribute('style',
+      'padding:13px 0;border-radius:13px;background:rgba(255,255,255,.14);border:none;' +
+      'color:#fff;font-size:16px;font-weight:600;cursor:pointer;' +
+      '-webkit-tap-highlight-color:transparent;font-family:-apple-system,sans-serif');
+    doneBtn.addEventListener('touchend', function(e){e.preventDefault();ov.remove();},{passive:false});
+    doneBtn.addEventListener('click', function(){ov.remove();});
+    modal.appendChild(doneBtn);
+
+    root.appendChild(ov);
   }
 
   // ── Init ───────────────────────────────────────────────────────────────────
